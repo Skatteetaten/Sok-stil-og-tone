@@ -862,7 +862,7 @@ export default function Home(): React.JSX.Element {
           <div style={{
             textAlign: 'center',
             marginTop: '64px',
-            color: '#94a3b8',
+            color: '#626b79',
             fontSize: '14px',
           }}>
             © Skatteetaten
