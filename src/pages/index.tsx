@@ -494,8 +494,8 @@ export default function Home(): React.JSX.Element {
   return (
     <>
       <Head>
-        <title>Søk stil og tone</title>
-        <meta name="description" content="Finn alt om komponenter, mønstre, stil og utvikling i Skatteetatens designsystem." />
+        <title>Søk i stil og tone</title>
+        <meta name="description" content="Finn innhold om språk, design, mønstre og komponenter." />
       </Head>
       <main style={{
         minHeight: '100vh',
