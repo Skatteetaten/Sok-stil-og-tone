@@ -264,7 +264,7 @@ function SearchResults({ query }: { query: string }) {
   const sectionHeaderIconStyle: React.CSSProperties = {
     width: '20px',
     height: '20px',
-    color: '#64748b',
+    color: '#626b79',
   };
 
   const sectionHeaderTextStyle: React.CSSProperties = {
@@ -304,7 +304,7 @@ function SearchResults({ query }: { query: string }) {
 
   const resultSubtitleStyle: React.CSSProperties = {
     fontSize: '12px',
-    color: '#64748b',
+    color: '#626b79',
     textTransform: 'uppercase',
     letterSpacing: '0.05em',
     lineHeight: '1.4',
@@ -321,7 +321,7 @@ function SearchResults({ query }: { query: string }) {
   const subItemIconStyle: React.CSSProperties = {
     width: '20px',
     height: '20px',
-    color: '#64748b',
+    color: '#626b79',
     marginRight: '8px',
     flexShrink: 0,
   };
@@ -523,7 +523,7 @@ export default function Home(): React.JSX.Element {
             </h1>
             <p style={{
               fontSize: '20px',
-              color: '#64748b',
+              color: '#626b79',
               marginBottom: '48px',
               fontWeight: '400',
               maxWidth: '600px',
@@ -622,13 +622,13 @@ export default function Home(): React.JSX.Element {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: '#64748b',
+                      color: '#626b79',
                     }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.color = '#475569';
                     }}
                     onMouseLeave={(e) => {
-                      e.currentTarget.style.color = '#64748b';
+                      e.currentTarget.style.color = '#626b79';
                     }}
                   >
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -693,7 +693,7 @@ export default function Home(): React.JSX.Element {
                 Stil og tone
               </h2>
               <p style={{
-                color: '#64748b',
+                color: '#626b79',
                 fontSize: '15px',
                 lineHeight: '1.6',
                 margin: 0,
@@ -744,7 +744,7 @@ export default function Home(): React.JSX.Element {
                 Komponenter
               </h2>
               <p style={{
-                color: '#64748b',
+                color: '#626b79',
                 fontSize: '15px',
                 lineHeight: '1.6',
                 margin: 0,
@@ -795,7 +795,7 @@ export default function Home(): React.JSX.Element {
                 DS på Github
               </h2>
               <p style={{
-                color: '#64748b',
+                color: '#626b79',
                 fontSize: '15px',
                 lineHeight: '1.6',
                 margin: 0,
@@ -846,7 +846,7 @@ export default function Home(): React.JSX.Element {
                 UU-status
               </h2>
               <p style={{
-                color: '#64748b',
+                color: '#626b79',
                 fontSize: '15px',
                 lineHeight: '1.6',
                 margin: 0,
