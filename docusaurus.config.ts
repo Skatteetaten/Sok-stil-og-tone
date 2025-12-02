@@ -6,8 +6,8 @@ import type * as Preset from '@docusaurus/preset-classic';
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
 // Beregn baseUrl og full URL for bilder
-const baseUrl = '/';
-const siteUrl = 'https://trausland.github.io';
+const baseUrl = '/Sok-stil-og-tone/';
+const siteUrl = 'https://skatteetaten.github.io';
 const fullImageUrl = `${siteUrl}${baseUrl}img/skatteetatenlogo.png`;
 
 const config: Config = {
@@ -28,8 +28,8 @@ const config: Config = {
 
   // GitHub pages deployment config.
   // If you aren't using GitHub pages, you don't need these.
-  organizationName: 'trausland', // Usually your GitHub org/user name.
-  projectName: 'stilogtone-hub', // Usually your repo name.
+  organizationName: 'Skatteetaten', // Usually your GitHub org/user name.
+  projectName: 'Sok-stil-og-tone', // Usually your repo name.
 
   onBrokenLinks: 'throw',
 
