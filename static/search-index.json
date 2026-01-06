@@ -6219,6 +6219,33 @@
     "level": 0
   },
   {
+    "title": "Versjon 2.5.0 – 17. desember 2025",
+    "url": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk#Release2.4.0-Versjon2.4.0",
+    "category": "Stil og tone",
+    "parent": "Designsystemet • Versjonshistorikk",
+    "parentUrl": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk",
+    "heading": "Versjon 2.5.0 – 17. desember 2025",
+    "level": 1
+  },
+  {
+    "title": "Nye funksjoner",
+    "url": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk#Release2.4.0-Nyekomponenterogfunksjoner",
+    "category": "Stil og tone",
+    "parent": "Designsystemet • Versjonshistorikk",
+    "parentUrl": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk",
+    "heading": "Nye funksjoner",
+    "level": 2
+  },
+  {
+    "title": "Andre feilrettinger og forbedringer",
+    "url": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk#Release2.4.0-Andrefeilrettingerogforbedringer",
+    "category": "Stil og tone",
+    "parent": "Designsystemet • Versjonshistorikk",
+    "parentUrl": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk",
+    "heading": "Andre feilrettinger og forbedringer",
+    "level": 2
+  },
+  {
     "title": "Versjon 2.4.1 – 26. november 2025",
     "url": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk#Release2.4.0-Versjon2.4.0",
     "category": "Stil og tone",
@@ -6243,15 +6270,6 @@
     "parent": "Designsystemet • Versjonshistorikk",
     "parentUrl": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk",
     "heading": "Nye komponenter og funksjoner",
-    "level": 2
-  },
-  {
-    "title": "Andre feilrettinger og forbedringer",
-    "url": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk#Release2.4.0-Andrefeilrettingerogforbedringer",
-    "category": "Stil og tone",
-    "parent": "Designsystemet • Versjonshistorikk",
-    "parentUrl": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/versjonshistorikk",
-    "heading": "Andre feilrettinger og forbedringer",
     "level": 2
   },
   {
@@ -11343,6 +11361,15 @@
     "level": 2
   },
   {
+    "title": "Tekst i komponenten",
+    "url": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/accordion#tekst-i-komponenten",
+    "category": "Stil og tone",
+    "parent": "Designsystemet • Accordion",
+    "parentUrl": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/accordion",
+    "heading": "Tekst i komponenten",
+    "level": 2
+  },
+  {
     "title": "Universell utforming",
     "url": "https://www.skatteetaten.no/stilogtone/designsystemet/komponenter/accordion#universell-utforming",
     "category": "Stil og tone",
@@ -13965,7 +13992,7 @@
   },
   {
     "title": "Accordion",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-accordion-accordion--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-accordion--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0
@@ -13986,7 +14013,7 @@
   },
   {
     "title": "Breadcrumbs",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-breadcrumbs-breadcrumbs--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-breadcrumbs--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0
@@ -14000,7 +14027,7 @@
   },
   {
     "title": "Card",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-card-card--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-card--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0
@@ -14021,7 +14048,7 @@
   },
   {
     "title": "Chips",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-chips-chips--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-chips--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0
@@ -14189,14 +14216,14 @@
   },
   {
     "title": "Popover",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-popover-popover--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-popover--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0
   },
   {
     "title": "RadioGroup",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-radiogroup-radiogroup--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-radiogroup--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0
@@ -14238,21 +14265,21 @@
   },
   {
     "title": "StepList",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-steplist-steplist--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-steplist--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0
   },
   {
     "title": "Table",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-table-table--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-table--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0
   },
   {
     "title": "Tabs",
-    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-tabs-tabs--docs",
+    "url": "https://skatteetaten.github.io/designsystemet/?path=/docs/komponenter-tabs--docs",
     "category": "Storybook",
     "parent": "Komponenter",
     "level": 0

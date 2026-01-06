@@ -608,17 +608,8 @@ async function fetchStorybookComponents() {
 
   // Components that are nested in a subfolder with the same name
   // URL pattern: /docs/komponenter-name-name--docs
-  const nestedComponents = new Set([
-    'StepList',
-    'Accordion',
-    'Chips',
-    'Card',
-    'Breadcrumbs',
-    'Popover',
-    'RadioGroup',
-    'Table',
-    'Tabs',
-  ]);
+  // Note: This was previously used for nested components, but URLs have been corrected
+  const nestedComponents = new Set([]);
 
   for (const name of componentNames) {
     const slug = name.toLowerCase();
