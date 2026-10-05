@@ -1,6 +1,6 @@
-# Søk i Stil og Tone
+# Søk i Skattekartet
 
-Dette prosjektet er en dedikert søkeside for Skatteetatens "Stil og tone" og designsystem. Den indekserer innhold fra `stilogtone.no` og Storybook-komponenter for å gi en samlet søkeopplevelse.
+Dette prosjektet er en dedikert søkeside for Skatteetatens Skattekartet og designsystem. Den indekserer innhold fra Skattekartet (skatteetaten.no/skattekartet), dokumentasjonen for designsystemet og Storybook for å gi en samlet søkeopplevelse.
 
 ## Teknologier
 
@@ -18,7 +18,7 @@ npm install
 
 ### 2. Bygg søkeindeksen
 
-Før du starter serveren, må du generere søkeindeksen. Dette skriptet crawler `stilogtone.no` og henter komponentnavn fra Storybook.
+Før du starter serveren, må du generere søkeindeksen. Dette skriptet crawler Skattekartet, leser dokumentasjonen for designsystemet fra GitHub og henter dokumentasjonssidene fra Storybook. Bruk `npm run build:search-index -- --force` for å bygge på nytt selv om indeksen er under 7 dager gammel.
 
 ```bash
 npm run build:search-index

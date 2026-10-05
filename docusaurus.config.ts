@@ -11,7 +11,7 @@ const siteUrl = 'https://skatteetaten.github.io';
 const fullImageUrl = `${siteUrl}${baseUrl}img/skatteetatenlogo.png`;
 
 const config: Config = {
-  title: 'Søk stil og tone',
+  title: 'Søk i Skattekartet',
   tagline: 'Finn alt om komponenter, mønstre, stil og utvikling',
   favicon: 'img/skatteetatenlogo/fav-icon/64x64/png/favicon64x64.png',
 

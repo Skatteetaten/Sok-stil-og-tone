@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * Build script for creating a search index from stilogtone.no and Storybook
- * Crawls all pages from stilogtone.no and extracts headings
+ * Builds a search index from Skattekartet, the designsystem docs (from MDX
+ * source on GitHub) and Storybook. Pass --force to ignore the 7-day cache.
  */
 
 const fs = require('fs');
@@ -22,20 +22,41 @@ if (typeof global.File === 'undefined') {
 }
 
 const BASE_URL = 'https://www.skatteetaten.no';
-const START_URL = 'https://www.skatteetaten.no/stilogtone/';
-const STORYBOOK_BASE = 'https://skatteetaten.github.io/designsystemet';
+const SECTION_PATH = '/skattekartet/';
+const START_URL = BASE_URL + SECTION_PATH;
+const STORYBOOK_BASE = 'https://master--68ad8bf775fcb9aa19b070e9.chromatic.com';
+const DOCS_SITE = 'https://skatteetaten.github.io/designsystemet';
+const DOCS_REPO = 'Skatteetaten/designsystemet';
+const DOCS_BRANCH = 'master';
+const DOCS_CONTENT_DIR = 'apps/ds-docs/content/docs/';
+// The docs SPA loads page content after the browser's initial hash scroll, so
+// #anchors land at the top of the page. Flip to true once that is fixed upstream.
+const DOCS_ANCHORS_WORK = false;
 
-// Landing pages that should be excluded from search results (navigation pages only)
+const CATEGORY_SKATTEKARTET = 'Skattekartet';
+const CATEGORY_DOCS = 'Skattekartet/Github';
+const CATEGORY_STORYBOOK = 'Storybook';
+
+// Navigation-only pages excluded from search results (normalized, no trailing slash)
 const LANDING_PAGES = new Set([
-  'https://www.skatteetaten.no/stilogtone/god-praksis/',
-  'https://www.skatteetaten.no/stilogtone/skrive/',
-  'https://www.skatteetaten.no/stilogtone/monster/',
-  'https://www.skatteetaten.no/stilogtone/designsystemet/',
-  'https://www.skatteetaten.no/stilogtone/visuelt/',
-  'https://www.skatteetaten.no/stilogtone/monster/interaksjon/',
-  'https://www.skatteetaten.no/stilogtone/monster/skatteetatenno/',
-  'https://www.skatteetaten.no/stilogtone/monster/skjemadesign',
-]);
+  '',
+  'praksis',
+  'praksis/sprak',
+  'praksis/sprak/skrive/skriveregler',
+  'praksis/sprak/skrive/skatteetaten.no',
+  'praksis/brukerinnsikt',
+  'monstre',
+  'monstre/interaksjon-sideoppsett/interaksjonsmonstre',
+  'monstre/interaksjon-sideoppsett/sideoppsett',
+  'monstre/innholdstyper/skatteetatenno',
+  'monstre/innholdstyper/skatteetatenno/elementer',
+  'monstre/innholdstyper/skatteetatenno/fremgangsmate',
+  'monstre/innholdstyper/skjemadesign',
+  'designsystemet',
+  'stilogtone',
+].map((p) => (START_URL + p).replace(/\/$/, '')));
+
+const STORYBOOK_EXCLUDED_GROUPS = new Set(['Tester', 'components']);
 
 // Track visited URLs to avoid duplicates
 const visited = new Set();
@@ -53,445 +74,43 @@ function normalizeUrl(url) {
   }
 }
 
-// Extract headings from HTML
-function extractHeadings(html, baseUrl) {
+// skatteetaten.no assigns heading anchors client-side (Static/dist/js/main.*.js):
+// only headings inside these containers get one, and only if they lack an id.
+const ANCHOR_SCOPES = ['.articlepage', '.lawarticlepage', '.componentarticlepage', '.ratetypepage', '.formpage', '.postpage']
+  .map((page) => `${page} main .narrow-container`)
+  .concat(['.pagewithoutlayout main', '.is-lonnsjustering main']);
+
+// Exact port of skatteetaten.no's slug rule. String.replace only swaps the
+// FIRST æ/ø/å/-, and uppercase ÆØÅ are dropped — keep it that way so anchors match.
+function skatteetatenSlug(text) {
+  return text
+    .trim()
+    .replace('æ', 'ae')
+    .replace('ø', 'o')
+    .replace('å', 'a')
+    .replace('-', ' ')
+    .replace(/[^a-zA-Z0-9 ]/g, '')
+    .replace(/\s+/g, '-')
+    .toLowerCase();
+}
+
+function extractHeadings(html) {
   const $ = cheerio.load(html);
-  const headings = [];
-
-  // Extract h1 (page title)
   const h1 = $('h1').first().text().trim();
+  const anchored = new Set(
+    $(ANCHOR_SCOPES.map((scope) => `${scope} h2, ${scope} h3, ${scope} h4`).join(', ')).toArray(),
+  );
 
-  // First, find all anchor links on the page that point to headings
-  // Store mapping of heading text to anchor ID (prioritize semantic IDs)
-  const headingToAnchorMap = new Map();
-
-  // Find all links that point to headings (href="#id")
-  // Also find all elements with IDs that might be anchor targets
-  const allAnchorIds = new Set();
-  $('a[href^="#"]').each((i, elem) => {
-    const $link = $(elem);
-    const href = $link.attr('href');
-    if (!href || href === '#') return;
-
-    const anchorId = href.substring(1); // Remove #
-    allAnchorIds.add(anchorId);
-
-    // Check if this is a GUID-based ID (with or without dash after ID)
-    const isGuidBased = anchorId.match(/^ID-?[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
-
-    // Find the heading this link is associated with
-    // Could be a sibling, parent, or nearby heading
-    const $heading = $link.closest('h2, h3, h4').first();
-    if ($heading.length) {
-      const headingText = $heading.text().trim();
-      if (headingText) {
-        // Only set if no mapping exists, or if existing mapping is GUID-based and this is semantic
-        if (!headingToAnchorMap.has(headingText)) {
-          headingToAnchorMap.set(headingText, anchorId);
-        } else {
-          const existingId = headingToAnchorMap.get(headingText);
-          const existingIsGuid = existingId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
-          // Replace GUID-based ID with semantic ID
-          if (existingIsGuid && !isGuidBased) {
-            headingToAnchorMap.set(headingText, anchorId);
-          }
-        }
-      }
-    } else {
-      // Check if link is right before a heading
-      const $nextHeading = $link.next('h2, h3, h4').first();
-      if ($nextHeading.length) {
-        const headingText = $nextHeading.text().trim();
-        if (headingText) {
-          // Only set if no mapping exists, or if existing mapping is GUID-based and this is semantic
-          if (!headingToAnchorMap.has(headingText)) {
-            headingToAnchorMap.set(headingText, anchorId);
-          } else {
-            const existingId = headingToAnchorMap.get(headingText);
-            const existingIsGuid = existingId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
-            // Replace GUID-based ID with semantic ID
-            if (existingIsGuid && !isGuidBased) {
-              headingToAnchorMap.set(headingText, anchorId);
-            }
-          }
-        }
-      }
-    }
-
-    // Also check if link text matches a heading (for table of contents)
-    const linkText = $link.text().trim();
-    if (linkText) {
-      // Find headings with matching text
-      $('h2, h3, h4').each((j, headingElem) => {
-        const $heading = $(headingElem);
-        const headingText = $heading.text().trim();
-        // Match if link text is similar to heading text
-        if (headingText && (headingText === linkText || headingText.includes(linkText) || linkText.includes(headingText))) {
-          // Only set if no mapping exists, or if existing mapping is GUID-based and this is semantic
-          if (!headingToAnchorMap.has(headingText)) {
-            headingToAnchorMap.set(headingText, anchorId);
-          } else {
-            const existingId = headingToAnchorMap.get(headingText);
-            const existingIsGuid = existingId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
-            // Replace GUID-based ID with semantic ID
-            if (existingIsGuid && !isGuidBased) {
-              headingToAnchorMap.set(headingText, anchorId);
-            }
-          }
-        }
-      });
-    }
-  });
-
-  // Also find all elements with IDs on the page
-  $('[id]').each((i, elem) => {
-    const $elem = $(elem);
-    const id = $elem.attr('id');
-    if (id) {
-      allAnchorIds.add(id);
-
-      // Check if this is a GUID-based ID
-      const isGuidBased = id.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
-
-      // Check if this element is a heading or associated with one
-      const $heading = $elem.is('h2, h3, h4') ? $elem : $elem.closest('h2, h3, h4').first();
-      if ($heading.length) {
-        // If this element IS a heading with an ID, prioritize it in the mapping
-        const headingText = $heading.text().trim();
-        if (headingText) {
-          // Always use the heading's own ID if it exists (prioritize semantic IDs on headings)
-          if (!headingToAnchorMap.has(headingText)) {
-            headingToAnchorMap.set(headingText, id);
-          } else {
-            const existingId = headingToAnchorMap.get(headingText);
-            const existingIsGuid = existingId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
-            // Replace GUID-based ID with semantic ID, or if this is a heading's own ID, always use it
-            if (existingIsGuid && !isGuidBased) {
-              headingToAnchorMap.set(headingText, id);
-            } else if ($elem.is('h2, h3, h4') && !isGuidBased) {
-              // If this is the heading element itself with a semantic ID, always use it
-              headingToAnchorMap.set(headingText, id);
-            }
-          }
-        }
-      } else if (!$heading.length && $elem.closest('a, button').length === 0) {
-        // Check if heading is nearby
-        const $nearbyHeading = $elem.prev('h2, h3, h4').first();
-        if ($nearbyHeading.length) {
-          const headingText = $nearbyHeading.text().trim();
-          if (headingText) {
-            // Only set if no mapping exists, or if existing mapping is GUID-based and this is semantic
-            if (!headingToAnchorMap.has(headingText)) {
-              headingToAnchorMap.set(headingText, id);
-            } else {
-              const existingId = headingToAnchorMap.get(headingText);
-              const existingIsGuid = existingId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
-              // Replace GUID-based ID with semantic ID
-              if (existingIsGuid && !isGuidBased) {
-                headingToAnchorMap.set(headingText, id);
-              }
-            }
-          }
-        }
-      }
-    }
-  });
-
-  // Extract h2, h3, h4 as subheadings
-  $('h2, h3, h4').each((i, elem) => {
-    const $elem = $(elem);
-    const text = $elem.text().trim();
+  const headings = [];
+  $('h2, h3, h4').each((_, el) => {
+    const $h = $(el);
+    if ($h.closest('header, nav, footer').length) return;
+    const text = $h.text().trim();
     if (!text) return;
 
-    let id = null;
-    let guidBasedId = null; // Store GUID-based IDs separately
-
-    // CRITICAL: First, check if heading element has a semantic ID on itself
-    // This must be checked FIRST to ensure it's always prioritized over any other IDs
-    const headingSemanticId = $elem.attr('id');
-    if (headingSemanticId && !headingSemanticId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i)) {
-      // Always use the heading's own semantic ID if it exists (like id="innholdsdesign")
-      id = headingSemanticId;
-    } else if (headingSemanticId && headingSemanticId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i)) {
-      // Store GUID-based ID separately
-      guidBasedId = headingSemanticId;
-    }
-
-    // Also check if there's an anchor link inside the heading that points to a semantic ID
-    // This handles cases where the ID is added dynamically with JavaScript (e.g., by Docusaurus)
-    // The anchor link (e.g., <a href="#innholdsdesign">) is in the HTML, but the ID on the heading
-    // element itself is added dynamically, so we use the anchor link's href as the semantic ID
-    if (!id) {
-      const $anchor = $elem.find('a[href^="#"]');
-      if ($anchor.length) {
-        $anchor.each((j, anchor) => {
-          const href = $(anchor).attr('href');
-          if (href && href.startsWith('#')) {
-            const targetId = href.substring(1);
-            // Check if it's a semantic ID (not GUID-based)
-            if (!targetId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i)) {
-              // Use the semantic ID from the anchor link directly
-              // Don't check if element exists since ID is added dynamically with JavaScript
-              id = targetId;
-              return false; // Break out of each loop
-            }
-          }
-        });
-      }
-    }
-
-    // If no semantic ID exists, check if heading is wrapped in an anchor tag or button
-    // Also check if there's a button inside the heading with a data-target pointing to a GUID-based ID
-    if (!id) {
-      // First, check if heading is wrapped in an anchor tag or button
-      const $parentAnchor = $elem.closest('a[id], button[id]');
-      if ($parentAnchor.length) {
-        const parentId = $parentAnchor.attr('id');
-        if (!parentId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i)) {
-          id = parentId;
-        } else if (!guidBasedId) {
-          guidBasedId = parentId;
-        }
-      }
-
-      // Check if there's a button inside the heading with a span.oc-heading
-      // For headings with buttons, the button text usually matches the semantic ID
-      // Generate semantic ID from button text instead of using GUID from data-target
-      if (!id) {
-        const $button = $elem.find('button');
-        if ($button.length) {
-          let buttonText = null;
-
-          // First, look for span.oc-heading inside the button
-          const $ocHeading = $button.find('span.oc-heading');
-          if ($ocHeading.length) {
-            buttonText = $ocHeading.text().trim();
-
-            // Also check for span.oc-ingress (for multi-line buttons)
-            const $ocIngress = $button.find('span.oc-ingress');
-            if ($ocIngress.length) {
-              const ingressText = $ocIngress.text().trim();
-              if (ingressText) {
-                // Combine heading and ingress text
-                buttonText = `${buttonText} ${ingressText}`;
-              }
-            }
-          } else {
-            // If no span.oc-heading found, use button text directly
-            buttonText = $button.text().trim();
-          }
-
-          if (buttonText) {
-            // Generate semantic ID from button text (like Docusaurus does)
-            const normalizedText = buttonText.replace(/\s+/g, ' ').replace(/\n/g, ' ').trim();
-            const generatedId = normalizedText
-              .toLowerCase()
-              .replace(/å/g, 'a')
-              .replace(/æ/g, 'ae')
-              .replace(/ø/g, 'o')
-              .replace(/[^a-z0-9\s-]/g, '')
-              .replace(/\s+/g, '-')
-              .replace(/-+/g, '-')
-              .substring(0, 100);
-
-            // Use the generated semantic ID
-            id = generatedId;
-          }
-        }
-      }
-    }
-
-    // If still no semantic ID, check if there's an anchor tag or button before the heading
-    if (!id) {
-      const $prevAnchor = $elem.prev('a[id], button[id]');
-      if ($prevAnchor.length) {
-        const prevId = $prevAnchor.attr('id');
-        if (!prevId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i)) {
-          id = prevId;
-        } else if (!guidBasedId) {
-          guidBasedId = prevId;
-        }
-      }
-    }
-
-    // If still no semantic ID, check if there's an anchor tag or button that wraps or is near the heading
-    if (!id) {
-      const $nearbyAnchor = $elem.siblings('a[id], button[id]').first();
-      if ($nearbyAnchor.length) {
-        const nearbyId = $nearbyAnchor.attr('id');
-        if (!nearbyId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i)) {
-          id = nearbyId;
-        } else if (!guidBasedId) {
-          guidBasedId = nearbyId;
-        }
-      }
-    }
-
-    // If still no semantic ID, try to find elements with semantic IDs that match this heading
-    // First, check if an element with a semantic ID exists on the page
-    if (!id) {
-      // Normalize text for ID generation (remove newlines and extra spaces)
-      const normalizedText = text.replace(/\s+/g, ' ').replace(/\n/g, ' ').trim();
-      const generatedId = normalizedText
-        .toLowerCase()
-        .replace(/å/g, 'a')
-        .replace(/æ/g, 'ae')
-        .replace(/ø/g, 'o')
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .substring(0, 100);
-
-      // First, check if an element with this semantic ID exists on the page
-      const $targetElement = $(`#${generatedId}`);
-      if ($targetElement.length > 0) {
-        // Check if this element is the heading or associated with it
-        // Normalize heading text for comparison
-        const $targetHeading = $targetElement.is('h2, h3, h4') ? $targetElement : $targetElement.closest('h2, h3, h4').first();
-        if ($targetHeading.length) {
-          const targetHeadingText = $targetHeading.text().trim().replace(/\s+/g, ' ').replace(/\n/g, ' ');
-          if (targetHeadingText === normalizedText) {
-            id = generatedId;
-          }
-        } else {
-          // Check if heading is nearby
-          const $nearbyHeading = $targetElement.prev('h2, h3, h4').first();
-          if ($nearbyHeading.length) {
-            const nearbyHeadingText = $nearbyHeading.text().trim().replace(/\s+/g, ' ').replace(/\n/g, ' ');
-            if (nearbyHeadingText === normalizedText) {
-              id = generatedId;
-            }
-          }
-        }
-      }
-
-      // If still no ID, check if any link on the page points to this semantic ID
-      if (!id) {
-        const $anchorLink = $(`a[href="#${generatedId}"]`);
-        if ($anchorLink.length) {
-          // Verify this link is associated with this heading
-          const $linkHeading = $anchorLink.closest('h2, h3, h4').first();
-          if (!$linkHeading.length) {
-            const $nextHeading = $anchorLink.next('h2, h3, h4').first();
-            if ($nextHeading.length && $nextHeading.text().trim() === text) {
-              // Verify the ID actually exists on the page (element must exist, not just a link pointing to it)
-              if ($(`#${generatedId}`).length > 0) {
-                id = generatedId;
-              }
-            }
-          } else if ($linkHeading.text().trim() === text) {
-            // Verify the ID actually exists on the page (element must exist, not just a link pointing to it)
-            if ($(`#${generatedId}`).length > 0) {
-              id = generatedId;
-            }
-          }
-        }
-      }
-    }
-
-    // If still no semantic ID, check our mapping from anchor links (prioritize semantic IDs)
-    // But only if the heading element itself doesn't have a semantic ID
-    if (!id && headingToAnchorMap.has(text)) {
-      const mappedId = headingToAnchorMap.get(text);
-      // Only use if it's not a GUID-based ID
-      if (!mappedId.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i)) {
-        // Use semantic ID from mapping directly
-        // Don't check if element exists since ID might be added dynamically with JavaScript
-        id = mappedId;
-      } else if (!guidBasedId) {
-        guidBasedId = mappedId;
-      }
-    }
-
-    // If still no ID, try to find any element with an ID that could match this heading
-    if (!id) {
-      // Generate a few variations of the ID
-      const variations = [
-        text.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-'),
-        text.toLowerCase().replace(/å/g, 'a').replace(/æ/g, 'ae').replace(/ø/g, 'o').replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-'),
-      ];
-
-      for (const variant of variations) {
-        const $target = $(`#${variant}`);
-        if ($target.length) {
-          // Check if this element is the heading or associated with it
-          let $targetHeading = $target.closest('h2, h3, h4').first();
-          if (!$targetHeading.length) {
-            $targetHeading = $target.is('h2, h3, h4') ? $target : null;
-          }
-          if ($targetHeading && $targetHeading.length && $targetHeading.text().trim() === text) {
-            id = variant;
-            break;
-          }
-        }
-      }
-    }
-
-    // Final fallback: generate ID from heading text (like Docusaurus does)
-    // This handles cases where IDs are added dynamically with JavaScript
-    // We generate the semantic ID based on the heading text and use it directly
-    // since Docusaurus will add the ID dynamically when the page loads
-    if (!id) {
-      // Normalize text for ID generation (remove newlines and extra spaces)
-      const normalizedText = text.replace(/\s+/g, ' ').replace(/\n/g, ' ').trim();
-      const generatedId = normalizedText
-        .toLowerCase()
-        .replace(/å/g, 'a')
-        .replace(/æ/g, 'ae')
-        .replace(/ø/g, 'o')
-        .replace(/[^a-z0-9\s-]/g, '')
-        .replace(/\s+/g, '-')
-        .replace(/-+/g, '-')
-        .substring(0, 100);
-
-      // Always use the generated semantic ID if it's not empty
-      // Even if element or anchor link doesn't exist yet, Docusaurus will add it dynamically
-      if (generatedId) {
-        id = generatedId;
-      }
-    }
-
-    // Only use GUID-based ID as last resort if no semantic ID was found
-    if (!id && guidBasedId) {
-      // Verify GUID-based ID exists on the page (element must exist, not just a link pointing to it)
-      if ($(`#${guidBasedId}`).length > 0) {
-        id = guidBasedId;
-      }
-    }
-
-    const level = elem.tagName === 'h2' ? 1 : elem.tagName === 'h3' ? 2 : 3;
-
-    // Include ID if:
-    // 1. Element exists on the page, OR
-    // 2. There's an anchor link pointing to it (even if element doesn't exist yet - it will be added dynamically)
-    // 3. It's a generated semantic ID (not GUID-based) - assume it will be added dynamically
-    let verifiedId = null;
-    if (id) {
-      const isGuidBased = id.match(/^ID-[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i);
-      if ($(`#${id}`).length > 0) {
-        // Element exists, use it
-        verifiedId = id;
-      } else if (!isGuidBased) {
-        // Semantic ID doesn't exist yet, but check if there's an anchor link pointing to it
-        // This handles cases where ID is added dynamically with JavaScript
-        const $anchorLink = $(`a[href="#${id}"]`);
-        if ($anchorLink.length > 0) {
-          // There's an anchor link pointing to this ID, use it even if element doesn't exist yet
-          // The ID will be added dynamically with JavaScript when the page loads
-          verifiedId = id;
-        } else {
-          // No anchor link found, but if it's a generated semantic ID, assume it will be added dynamically
-          // Only use if it's not a GUID-based ID
-          verifiedId = id;
-        }
-      }
-    }
-
-    headings.push({
-      title: text,
-      id: verifiedId, // Only include ID if it exists on the page
-      level: level,
-    });
+    const id = $h.attr('id') || (anchored.has(el) ? skatteetatenSlug(text) : null);
+    const level = el.tagName === 'h2' ? 1 : el.tagName === 'h3' ? 2 : 3;
+    headings.push({ title: text.replace(/\s+/g, ' '), id, level });
   });
 
   return { title: h1, headings };
@@ -514,19 +133,22 @@ async function fetchPage(url) {
     }
 
     const html = await response.text();
-    const { title, headings } = extractHeadings(html, url);
+    const { title, headings } = extractHeadings(html);
 
-    // Extract links to other stilogtone pages
     const $ = cheerio.load(html);
     const links = [];
 
-    $('a[href]').each((i, elem) => {
-      const href = $(elem).attr('href');
+    // Some landing pages render their cards client-side from an inline JSON
+    // list (`var allthedata = [{ "url": "/skattekartet/..." }]`) with no <a> tags.
+    const hrefs = $('a[href]').map((_, a) => $(a).attr('href')).get();
+    for (const m of html.matchAll(/"url"\s*:\s*"(\/skattekartet\/[^"]+)"/g)) hrefs.push(m[1]);
+
+    hrefs.forEach((href) => {
       if (!href) return;
 
       try {
         const absoluteUrl = new URL(href, url).href;
-        if (absoluteUrl.startsWith(BASE_URL + '/stilogtone/')) {
+        if (absoluteUrl.startsWith(START_URL)) {
           const normalized = normalizeUrl(absoluteUrl);
           if (normalized && !visited.has(normalized)) {
             links.push(normalized);
@@ -549,163 +171,122 @@ async function fetchPage(url) {
   }
 }
 
-// Build hierarchy from URL structure
-function buildHierarchy(url) {
-  // Normalize URL first
-  const normalized = normalizeUrl(url);
-  if (!normalized || !normalized.includes('/stilogtone/')) {
-    return { parent: 'Stil og tone', parentUrl: BASE_URL + '/stilogtone/' };
+const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+const humanizeSlug = (slug) => capitalize(decodeURIComponent(slug).replace(/[-_]+/g, ' '));
+
+// Parent = the top-level Skattekartet section, named by that section page's own h1.
+function buildHierarchy(url, titlesByUrl) {
+  const parts = url.replace(START_URL.replace(/\/$/, ''), '').split('/').filter(Boolean);
+  if (parts.length <= 1) {
+    return { parent: CATEGORY_SKATTEKARTET, parentUrl: START_URL };
   }
-
-  const parts = normalized.replace(BASE_URL + '/stilogtone', '').split('/').filter(Boolean);
-
-  if (parts.length === 0) {
-    return { parent: 'Stil og tone', parentUrl: BASE_URL + '/stilogtone/' };
-  }
-
-  // Map URL parts to readable names
-  const categoryMap = {
-    'god-praksis': 'God praksis',
-    'monster': 'Mønstre og maler',
-    'designsystemet': 'Designsystemet',
-    'språk': 'Språk',
-    'skrive': 'Språk',
-    'visuell-identitet': 'Visuell identitet',
-    'visuelt': 'Visuell identitet',
-    'komponenter': 'Komponenter',
-    'interaksjon': 'Interaksjonsmønstre',
-    'produkt': 'Produkt',
+  const sectionUrl = START_URL + parts[0];
+  return {
+    parent: titlesByUrl.get(sectionUrl) || humanizeSlug(parts[0]),
+    parentUrl: sectionUrl + '/',
   };
-
-  if (parts.length === 1) {
-    const parent = categoryMap[parts[0]] || parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-    return { parent, parentUrl: BASE_URL + '/stilogtone/' + parts[0] + '/' };
-  }
-
-  // For deeper pages, use the parent category
-  const parentCategory = categoryMap[parts[0]] || parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
-  const parentUrl = BASE_URL + '/stilogtone/' + parts.slice(0, -1).join('/') + '/';
-
-  return { parent: parentCategory, parentUrl };
 }
 
-// Fetch Storybook components and other content
 async function fetchStorybookComponents() {
+  const response = await fetch(`${STORYBOOK_BASE}/index.json`);
+  if (!response.ok) throw new Error(`Storybook index.json: ${response.status}`);
+  const { entries } = await response.json();
+
+  return Object.values(entries)
+    .filter((e) => e.type === 'docs' && !STORYBOOK_EXCLUDED_GROUPS.has(e.title.split('/')[0]))
+    .map((e) => {
+      const parts = e.title.split('/');
+      return {
+        title: parts[parts.length - 1],
+        url: `${STORYBOOK_BASE}/?path=/docs/${e.id}`,
+        category: CATEGORY_STORYBOOK,
+        parent: parts.slice(0, -1).join(' • '),
+        level: 0,
+      };
+    });
+}
+
+// Mirrors github-slugger, which Fumadocs uses for heading anchors (keeps æøå).
+function githubSlug(text, seen) {
+  const base = text
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}\s_-]/gu, '')
+    .replace(/\s/g, '-');
+  let slug = base;
+  let n = 1;
+  while (seen.has(slug)) slug = `${base}-${n++}`;
+  seen.add(slug);
+  return slug;
+}
+
+function parseMdx(source) {
+  const fm = source.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+  const title = fm?.[1].match(/^title:\s*["']?(.+?)["']?\s*$/m)?.[1];
+  const body = fm ? source.slice(fm[0].length) : source;
+
+  const headings = [];
+  const seen = new Set();
+  let inFence = false;
+  for (const line of body.split(/\r?\n/)) {
+    if (/^\s*(```|~~~)/.test(line)) inFence = !inFence;
+    if (inFence) continue;
+    const m = line.match(/^(#{2,4})\s+(.+?)\s*#*\s*$/);
+    if (!m) continue;
+    const text = m[2]
+      .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+      .replace(/[`*_]/g, '')
+      .trim();
+    headings.push({ title: text, id: githubSlug(text, seen), level: m[1].length - 1 });
+  }
+  return { title, headings };
+}
+
+// The docs site is a client-rendered SPA, so we index its MDX source instead.
+async function fetchDesignsystemDocs() {
+  const headers = { 'User-Agent': 'Sok-stil-og-tone' };
+  if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+
+  const treeRes = await fetch(
+    `https://api.github.com/repos/${DOCS_REPO}/git/trees/${DOCS_BRANCH}?recursive=1`,
+    { headers },
+  );
+  if (!treeRes.ok) throw new Error(`GitHub tree: ${treeRes.status}`);
+  const { tree } = await treeRes.json();
+
+  const files = tree
+    .map((t) => t.path)
+    .filter((p) => p.startsWith(DOCS_CONTENT_DIR) && p.endsWith('.mdx'));
+
   const items = [];
+  for (const file of files) {
+    const rel = file.slice(DOCS_CONTENT_DIR.length).replace(/\.mdx$/, '');
+    // The docs front page only links onwards, like a Skattekartet landing page.
+    if (rel === 'index') continue;
 
-  // Komponenter
-  // Komponenter
-  const componentNames = [
-    'Accordion', 'Alert', 'Blockquote', 'Breadcrumbs', 'Button', 'Card', 'Checkbox',
-    'CheckboxGroup', 'Chips', 'Combobox', 'DatePicker', 'DescriptionList', 'Divider',
-    'ErrorMessage', 'ErrorSummary', 'Fieldset', 'FileUploader', 'Footer', 'Heading',
-    'Icon', 'IconButton', 'InlineButton', 'Link', 'Linkgroup', 'List', 'MegaButton',
-    'Modal', 'NavigationTile', 'OpenClose', 'Pagination', 'Panel', 'Paragraph',
-    'Popover', 'RadioGroup', 'RolePicker', 'ScrollToTopButton', 'SearchField',
-    'Select', 'Spinner', 'StepList', 'Table', 'Tabs', 'Tag', 'TextArea', 'TextField',
-    'TopBannerExternal', 'TopBannerInternal', 'WordInfo',
-  ];
+    const segments = rel.split('/');
+    if (segments[segments.length - 1] === 'index') segments.pop();
+    const pageUrl = `${DOCS_SITE}/${segments.join('/')}`;
 
-  // Components that are nested in a subfolder with the same name
-  // URL pattern: /docs/komponenter-name-name--docs
-  // Note: This was previously used for nested components, but URLs have been corrected
-  const nestedComponents = new Set([]);
-
-  for (const name of componentNames) {
-    const slug = name.toLowerCase();
-    let url = `${STORYBOOK_BASE}/?path=/docs/komponenter-${slug}--docs`;
-
-    if (nestedComponents.has(name)) {
-      url = `${STORYBOOK_BASE}/?path=/docs/komponenter-${slug}-${slug}--docs`;
-    } else if (name === 'Icon') {
-      url = `${STORYBOOK_BASE}/?path=/docs/komponenter-icon-systemicon--docs`;
+    const rawUrl = `https://raw.githubusercontent.com/${DOCS_REPO}/${DOCS_BRANCH}/${file}`;
+    const res = await fetch(rawUrl, { headers: { 'User-Agent': headers['User-Agent'] } });
+    if (!res.ok) {
+      console.warn(`  ⚠️  Failed to fetch ${rawUrl}: ${res.status}`);
+      continue;
     }
+    const { title, headings } = parseMdx(await res.text());
+    const pageTitle = title || humanizeSlug(segments[segments.length - 1]);
 
     items.push({
-      title: name,
-      url: url,
-      category: 'Storybook',
-      parent: 'Komponenter',
+      url: pageUrl,
+      title: pageTitle,
+      category: CATEGORY_DOCS,
+      parent: segments.slice(0, -1).map(humanizeSlug).join(' • ') || 'Designsystemet',
+      parentUrl: DOCS_SITE + '/',
       level: 0,
+      headings,
+      anchorsWork: DOCS_ANCHORS_WORK,
     });
   }
-
-  // Generelt
-  items.push({
-    title: 'Introduksjon',
-    url: `${STORYBOOK_BASE}/?path=/docs/generelt-introduksjon--docs`,
-    category: 'Storybook',
-    parent: 'Generelt',
-    level: 0,
-  });
-
-  // Designtokens
-  const designTokenNames = [
-    'Breakpoints',
-    'Containers',
-    'Font',
-    'Hjelpestiler (SCSS)',
-    'Palette',
-    'Sizes',
-    'Spacing',
-  ];
-
-  for (const name of designTokenNames) {
-    const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[()]/g, '');
-    items.push({
-      title: name,
-      url: `${STORYBOOK_BASE}/?path=/docs/designtokens-${slug}--docs`,
-      category: 'Storybook',
-      parent: 'Designtokens',
-      level: 0,
-    });
-  }
-
-  // Sidetyper - Ekstern
-  const eksternSidetyper = [
-    'Kvittering',
-    'Oppgaveliste (beta)',
-    'Repeterende felter',
-    'Skjema med steg',
-  ];
-
-  for (const name of eksternSidetyper) {
-    const slug = name.toLowerCase().replace(/\s+/g, '-').replace(/[()]/g, '');
-    items.push({
-      title: name,
-      url: `${STORYBOOK_BASE}/?path=/docs/sidetyper-ekstern-${slug}--docs`,
-      category: 'Storybook',
-      parent: 'Sidetyper • Ekstern',
-      level: 0,
-    });
-  }
-
-  // Sidetyper - Intern
-  items.push({
-    title: 'Saksvisning',
-    url: `${STORYBOOK_BASE}/?path=/docs/sidetyper-intern-saksvisning--docs`,
-    category: 'Storybook',
-    parent: 'Sidetyper • Intern',
-    level: 0,
-  });
-
-  // Verktøy
-  const verktoyNames = [
-    'Formatters',
-    'Kommandolinjeverktøy',
-  ];
-
-  for (const name of verktoyNames) {
-    const slug = name.toLowerCase().replace(/\s+/g, '-');
-    items.push({
-      title: name,
-      url: `${STORYBOOK_BASE}/?path=/docs/verktoy-${slug}--docs`,
-      category: 'Storybook',
-      parent: 'Verktøy',
-      level: 0,
-    });
-  }
-
   return items;
 }
 
@@ -714,7 +295,7 @@ const buildSearchIndex = async () => {
   const staticDir = path.join(__dirname, '..', 'static');
   const indexPath = path.join(staticDir, 'search-index.json');
 
-  if (fs.existsSync(indexPath)) {
+  if (fs.existsSync(indexPath) && !process.argv.includes('--force')) {
     const stats = fs.statSync(indexPath);
     const ageInDays = (Date.now() - stats.mtimeMs) / (1000 * 60 * 60 * 24);
 
@@ -728,7 +309,7 @@ const buildSearchIndex = async () => {
     }
   }
 
-  console.log('🔍 Building search index from stilogtone.no...');
+  console.log('🔍 Building search index from Skattekartet...');
   console.log(`   Starting from: ${START_URL}`);
 
   // Crawl all pages
@@ -737,11 +318,6 @@ const buildSearchIndex = async () => {
     const normalized = normalizeUrl(url);
 
     if (!normalized || visited.has(normalized)) {
-      continue;
-    }
-
-    // Exclusion rule: Skip product pages
-    if (normalized.includes('/stilogtone/produkt/')) {
       continue;
     }
 
@@ -757,33 +333,32 @@ const buildSearchIndex = async () => {
       }
     });
 
-    // Build hierarchy
-    const hierarchy = buildHierarchy(normalized);
-
-    // Mark if this is a landing page (should be excluded from search)
-    const isLandingPage = LANDING_PAGES.has(normalized + '/') || LANDING_PAGES.has(normalized);
-
     pages.push({
       url: normalized,
       title: pageData.title || normalized.split('/').pop() || 'Untitled',
-      category: 'Stil og tone',
-      parent: hierarchy.parent,
-      parentUrl: hierarchy.parentUrl,
+      category: CATEGORY_SKATTEKARTET,
       level: 0,
       headings: pageData.headings,
-      isLandingPage: isLandingPage,
+      isLandingPage: LANDING_PAGES.has(normalized),
     });
 
     // Small delay to be respectful
     await new Promise(resolve => setTimeout(resolve, 100));
   }
 
-  console.log(`\n✅ Crawled ${pages.length} pages from stilogtone.no`);
+  const titlesByUrl = new Map(pages.map((p) => [p.url, p.title]));
+  pages.forEach((page) => Object.assign(page, buildHierarchy(page.url, titlesByUrl)));
 
-  // Fetch Storybook components
-  console.log('\n📚 Fetching Storybook components...');
+  console.log(`\n✅ Crawled ${pages.length} pages from Skattekartet`);
+
+  console.log('\n📘 Fetching designsystem docs from GitHub...');
+  const docsPages = await fetchDesignsystemDocs();
+  console.log(`   Found ${docsPages.length} pages`);
+  pages.push(...docsPages);
+
+  console.log('\n📚 Fetching Storybook docs...');
   const storybookComponents = await fetchStorybookComponents();
-  console.log(`   Found ${storybookComponents.length} components`);
+  console.log(`   Found ${storybookComponents.length} docs pages`);
 
   // Flatten the index to include both pages and headings
   const flattenedIndex = [];
@@ -815,8 +390,8 @@ const buildSearchIndex = async () => {
       // Build full breadcrumb path: category > page title
       const breadcrumb = page.parent ? `${page.parent} • ${page.title}` : page.title;
 
-      // Only include hash fragment if ID exists on the page
-      const url = heading.id ? `${page.url}#${heading.id}` : page.url;
+      // Headings without a working anchor link to the page itself; the UI folds them into the page row.
+      const url = heading.id && page.anchorsWork !== false ? `${page.url}#${heading.id}` : page.url;
 
       flattenedIndex.push({
         title: heading.title,
